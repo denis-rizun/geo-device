@@ -3,16 +3,15 @@ from fastapi import APIRouter, status
 from app.domains.devices.dependencies import DeviceServiceDep
 from app.domains.devices.schemas import LocationAcceptedResponse, LocationBatchRequest
 
-_RETRY_AFTER_HEADER = {
-    "Retry-After": {
-        "description": "Seconds to wait before retrying the batch",
-        "schema": {"type": "integer"},
-    }
-}
 _BACKLOG_FULL = {
     status.HTTP_503_SERVICE_UNAVAILABLE: {
         "description": "Ingest backlog is full, retry later",
-        "headers": _RETRY_AFTER_HEADER,
+        "headers": {
+            "Retry-After": {
+                "description": "Seconds to wait before retrying the batch",
+                "schema": {"type": "integer"},
+            }
+        },
     }
 }
 

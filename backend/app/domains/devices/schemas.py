@@ -24,11 +24,4 @@ class LocationBatchRequest(BaseSchema):
 
 class LocationAcceptedResponse(BaseSchema):
     accepted: int
-    backlog: int  # stream entries still waiting to be written, measured before this batch
-
-
-class DeviceLatest(BaseSchema):
-    device_id: DeviceId
-    lat: Latitude
-    lon: Longitude
-    recorded_at: datetime
+    backlog: int

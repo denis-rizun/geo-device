@@ -21,7 +21,6 @@ async def write_pings(session: AsyncSession, pings: list[Ping]) -> int:
             for ping in pings
         ]
     )
-
     result = await session.execute(stmt)
     return result.rowcount
 
