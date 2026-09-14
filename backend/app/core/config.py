@@ -6,6 +6,7 @@ from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.core.utils import BASE_MODEL_CONFIG
+from app.pipeline.config import IngestSettings, RedisSettings
 
 
 class APISettings(BaseSettings):
@@ -65,6 +66,8 @@ class Settings(BaseSettings):
     api: APISettings = Field(default_factory=APISettings)
     logging: LoggerSettings = Field(default_factory=LoggerSettings)
     database: DatabaseSettings = Field(default_factory=DatabaseSettings)
+    ingest: IngestSettings = Field(default_factory=IngestSettings)
+    redis: RedisSettings = Field(default_factory=RedisSettings)
 
     @classmethod
     @lru_cache

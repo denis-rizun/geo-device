@@ -2,12 +2,18 @@ import os
 import sys
 from logging.config import fileConfig
 
-from sqlalchemy import engine_from_config, pool
-from sqlmodel import SQLModel
-
 from alembic import context
+from sqlalchemy import engine_from_config, pool
 
-from app.config import config
+from app.core.config import config
+from app.core.db import Base
+from app.domains.devices import models as _devices_models
+from app.domains.geozones import models as _geozone_models
+
+_ = (
+    _geozone_models,
+    _devices_models,
+)
 
 current_path = os.path.dirname(os.path.abspath(__file__))
 app_path = os.path.dirname(current_path)
@@ -19,7 +25,7 @@ if alembic_config.config_file_name is not None:
     fileConfig(alembic_config.config_file_name)
 
 alembic_config.set_main_option("sqlalchemy.url", config.database.get_url("psycopg"))
-target_metadata = SQLModel.metadata
+target_metadata = Base.metadata
 
 
 def run_migrations_online() -> None:

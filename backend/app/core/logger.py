@@ -4,7 +4,7 @@ import sys
 import structlog
 from structlog.types import Processor
 
-from app.config import config
+from app.core.config import config
 
 
 def configure_logging() -> None:

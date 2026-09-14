@@ -7,13 +7,14 @@ dependencies = [
     "asyncpg>=0.31.0",
     "fastapi>=0.141.1",
     "geoalchemy2>=0.20.0",
+    "orjson>=3.12.0",
     "psycopg>=3.3.5",
     "pydantic>=2.13.5",
     "pydantic-settings>=2.15.0",
     "redis>=8.1.0",
     "sqlalchemy[asyncio]>=2.0.52",
-    "sqlmodel>=0.0.42",
     "structlog>=26.1.0",
+    "uvicorn>=0.53.0",
 ]
 
 
@@ -34,6 +35,7 @@ select = ["F", "E", "W", "C", "N", "I", "B", "Q", "T", "UP"]
 
 [tool.ruff.lint.per-file-ignores]
 "alembic/env.py" = ["F401"]
+"app/generator.py" = ["T201"]  # CLI load generator reports progress to stdout
 
 [tool.mypy]
 python_version = "3.14"
