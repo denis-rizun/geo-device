@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Geo Device — live tracking</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    :root { color-scheme: light dark; --bg: #11151c; --panel: #1b2029; --line: #2b323d; --text: #e6e9ef; --muted: #8b95a5; --accent: #4ea1ff; --alert: #ff6b6b; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font: 13px/1.45 ui-sans-serif, system-ui, sans-serif; background: var(--bg); color: var(--text); }
+    #layout { display: flex; height: 100vh; }
+    #sidebar { width: 320px; flex: none; background: var(--panel); border-right: 1px solid var(--line); display: flex; flex-direction: column; overflow: hidden; }
+    #map { flex: 1; }
+    section { padding: 12px 14px; border-bottom: 1px solid var(--line); }
+    h1 { font-size: 14px; margin: 0 0 10px; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+    h2 { font-size: 11px; margin: 0 0 8px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+    label { display: block; font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+    input { width: 100%; padding: 6px 8px; margin-bottom: 8px; background: #141922; border: 1px solid var(--line); border-radius: 4px; color: var(--text); font: inherit; }
+    button { padding: 6px 10px; background: var(--accent); border: 0; border-radius: 4px; color: #06101d; font: inherit; font-weight: 600; cursor: pointer; }
+    button.ghost { background: transparent; border: 1px solid var(--line); color: var(--muted); font-weight: 400; }
+    .row { display: flex; gap: 8px; }
+    .row > * { flex: 1; }
+    .status { font-size: 11px; color: var(--muted); margin-top: 6px; }
+    .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #555; margin-right: 6px; }
+    .dot.on { background: #47d16c; }
+    .scroll { overflow-y: auto; flex: 1; }
+    ul { list-style: none; margin: 0; padding: 0; }
+    li { padding: 6px 0; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+    li:last-child { border-bottom: 0; }
+    .meta { color: var(--muted); font-size: 11px; }
+    .alert .name { color: var(--alert); font-weight: 600; }
+    .hint { color: var(--muted); font-size: 11px; }
+  </style>
+</head>
+<body>
+<div id="layout">
+  <aside id="sidebar">
+    <section>
+      <h1>Geo Device</h1>
+      <label for="user">User id</label>
+      <input id="user" value="alice" autocomplete="off">
+      <div class="row">
+        <button id="connect">Connect</button>
+        <button id="disconnect" class="ghost">Disconnect</button>
+      </div>
+      <div class="status"><span id="dot" class="dot"></span><span id="state">offline</span></div>
+      <div class="status" id="counters">devices 0 · alerts 0</div>
+    </section>
+
+    <section>
+      <h2>New geozone</h2>
+      <p class="hint">Click the map to pick a center.</p>
+      <label for="zname">Name</label>
+      <input id="zname" placeholder="warehouse" autocomplete="off">
+      <div class="row">
+        <div>
+          <label for="zradius">Radius, m</label>
+          <input id="zradius" type="number" value="2000" min="1">
+        </div>
+        <div>
+          <label for="zcenter">Center</label>
+          <input id="zcenter" placeholder="click map" readonly>
+        </div>
+      </div>
+      <button id="create">Create zone</button>
+    </section>
+
+    <section style="flex: 1; display: flex; flex-direction: column; min-height: 120px;">
+      <h2>Geozones</h2>
+      <div class="scroll"><ul id="zones"></ul></div>
+    </section>
+
+    <section style="flex: 1; display: flex; flex-direction: column; min-height: 140px;">
+      <h2>Alerts</h2>
+      <div class="scroll"><ul id="alerts"></ul></div>
+    </section>
+  </aside>
+  <div id="map"></div>
+</div>
+
+<script>
+  const MAX_ALERTS = 100;
+  const $ = (id) => document.getElementById(id);
+
+  const map = L.map("map", { preferCanvas: true }).setView([50.4501, 30.5234], 11);
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19, attribution: "© OpenStreetMap",
+  }).addTo(map);
+
+  const deviceLayer = L.layerGroup().addTo(map);
+  const zoneLayer = L.layerGroup().addTo(map);
+  const markers = new Map();
+  const zoneShapes = new Map();
+
+  let socket = null;
+  let pendingCenter = null;
+  let alertCount = 0;
+
+  const userId = () => $("user").value.trim();
+  const headers = () => ({ "Content-Type": "application/json", "X-User-ID": userId() });
+
+  function setState(text, online) {
+    $("state").textContent = text;
+    $("dot").classList.toggle("on", Boolean(online));
+  }
+
+  function updateCounters() {
+    $("counters").textContent = `devices ${markers.size} · alerts ${alertCount}`;
+  }
+
+  function drawPositions(positions) {
+    for (const [deviceId, lat, lon] of positions) {
+      const marker = markers.get(deviceId);
+      if (marker) {
+        marker.setLatLng([lat, lon]);
+        continue;
+      }
+      const created = L.circleMarker([lat, lon], {
+        radius: 3, color: "#4ea1ff", weight: 1, fillOpacity: 0.85,
+      }).bindTooltip(deviceId);
+      created.addTo(deviceLayer);
+      markers.set(deviceId, created);
+    }
+    updateCounters();
+  }
+
+  function drawAlerts(alerts) {
+    const list = $("alerts");
+    for (const alert of alerts) {
+      alertCount += 1;
+      const item = document.createElement("li");
+      item.className = "alert";
+      item.innerHTML = `<span><span class="name">${alert.geozone_name}</span><br>`
+        + `<span class="meta">${alert.device_id}</span></span>`
+        + `<span class="meta">${new Date(alert.recorded_at).toLocaleTimeString()}</span>`;
+      list.prepend(item);
+    }
+    while (list.children.length > MAX_ALERTS) list.lastChild.remove();
+    updateCounters();
+  }
+
+  function connect() {
+    if (!userId()) return alert("user id is required");
+    disconnect();
+
+    const scheme = location.protocol === "https:" ? "wss:" : "ws:";
+    socket = new WebSocket(`${scheme}//${location.host}/ws?user_id=${encodeURIComponent(userId())}`);
+    setState("connecting…", false);
+
+    socket.onopen = () => { setState(`live as ${userId()}`, true); loadZones(); };
+    socket.onclose = (event) => setState(`offline (code ${event.code})`, false);
+    socket.onerror = () => setState("connection error", false);
+    socket.onmessage = (event) => {
+      const message = JSON.parse(event.data);
+      if (message.type === "device_positions") drawPositions(message.positions);
+      if (message.type === "geozone_alert") drawAlerts(message.alerts);
+    };
+  }
+
+  function disconnect() {
+    if (socket) { socket.close(); socket = null; }
+    setState("offline", false);
+  }
+
+  async function loadZones() {
+    const response = await fetch("/geozones", { headers: headers() });
+    if (!response.ok) return;
+
+    const zones = await response.json();
+    const list = $("zones");
+    list.innerHTML = "";
+    zoneLayer.clearLayers();
+    zoneShapes.clear();
+
+    for (const zone of zones) {
+      const circle = L.circle([zone.lat, zone.lon], {
+        radius: zone.radius_m, color: "#ffb454", weight: 1, fillOpacity: 0.08,
+      }).bindTooltip(zone.name);
+      circle.addTo(zoneLayer);
+      zoneShapes.set(zone.id, circle);
+
+      const item = document.createElement("li");
+      item.innerHTML = `<span>${zone.name}<br><span class="meta">${Math.round(zone.radius_m)} m</span></span>`;
+      const remove = document.createElement("button");
+      remove.className = "ghost";
+      remove.textContent = "delete";
+      remove.style.flex = "none";
+      remove.onclick = () => deleteZone(zone.id);
+      item.append(remove);
+      list.append(item);
+    }
+  }
+
+  async function createZone() {
+    if (!pendingCenter) return alert("click the map to pick a center");
+
+    const response = await fetch("/geozones", {
+      method: "POST",
+      headers: headers(),
+      body: JSON.stringify({
+        name: $("zname").value.trim() || `zone-${Date.now()}`,
+        lat: pendingCenter.lat,
+        lon: pendingCenter.lng,
+        radius_m: Number($("zradius").value),
+      }),
+    });
+    if (!response.ok) return alert(`create failed: ${response.status} ${await response.text()}`);
+
+    $("zname").value = "";
+    await loadZones();
+  }
+
+  async function deleteZone(id) {
+    await fetch(`/geozones/${id}`, { method: "DELETE", headers: headers() });
+    await loadZones();
+  }
+
+  map.on("click", (event) => {
+    pendingCenter = event.latlng;
+    $("zcenter").value = `${event.latlng.lat.toFixed(4)}, ${event.latlng.lng.toFixed(4)}`;
+  });
+
+  $("connect").onclick = connect;
+  $("disconnect").onclick = disconnect;
+  $("create").onclick = createZone;
+  updateCounters();
+</script>
+</body>
+</html>
