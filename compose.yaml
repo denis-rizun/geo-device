@@ -10,7 +10,7 @@ x-app: &app
 
 services:
   postgres:
-    image: imresamu/postgis:17-3.5  # todo: change to arm64 build
+    image: postgis/postgis:17-3.5  # or for macbook: imresamu/postgis:17-3.5
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -73,7 +73,6 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
-    restart: unless-stopped
 
 networks:
   geo-device:

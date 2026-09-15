@@ -75,7 +75,6 @@ async def read_new(redis: Redis, consumer: str, entry_id: str = NEW_MESSAGES) ->
         count=READ_COUNT,
         block=BLOCK_MS,
     )
-    # RESP2 answers with one [stream_name, entries] pair per requested stream
     if not isinstance(response, list) or not response:
         return []
 

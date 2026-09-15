@@ -1,6 +1,3 @@
-# ============================================
-# Stage 1: Build stage
-# ============================================
 FROM python:3.14-slim-trixie AS builder
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -30,9 +27,6 @@ COPY migrations/ ./migrations/
 COPY alembic.ini ./
 COPY frontend/ ./frontend/
 
-# ============================================
-# Stage 2: Runtime stage
-# ============================================
 FROM python:3.14-slim-trixie AS runtime
 
 ARG API_PORT=8000
