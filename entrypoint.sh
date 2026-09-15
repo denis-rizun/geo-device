@@ -8,10 +8,6 @@ case "$1" in
   migrate)
     exec alembic upgrade head
     ;;
-  generate)
-    shift
-    exec python -m app.generator "$@"
-    ;;
   *)
     exec "$@"
     ;;
