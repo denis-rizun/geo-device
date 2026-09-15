@@ -36,7 +36,7 @@ class Socket:
         async with asyncio.timeout(DELIVERY_TIMEOUT_S):
             while not self.sent:
                 await asyncio.sleep(0.01)
-        return orjson.loads(self.sent[0])
+        return orjson.loads(self.sent[0])  # type: ignore[no-any-return]
 
 
 async def attach(subscriber: Subscriber, user_id: str) -> tuple[Connection, Socket]:

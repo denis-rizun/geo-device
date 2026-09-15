@@ -43,7 +43,7 @@ class TestLocationRequest:
 
     def test_rejects_unknown_fields(self) -> None:
         with pytest.raises(ValidationError):
-            LocationRequest(device_id="dev-1", lat=1.0, lon=2.0, speed=10)
+            LocationRequest(device_id="dev-1", lat=1.0, lon=2.0, speed=10)  # type: ignore[call-arg]
 
 
 class TestLocationBatchRequest:

@@ -36,7 +36,7 @@ async def listen(redis: Redis, channel: str) -> dict[str, Any]:
             while True:
                 message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=None)
                 if message:
-                    return orjson.loads(message["data"])
+                    return orjson.loads(message["data"])  # type: ignore[no-any-return]
     finally:
         await pubsub.aclose()
 

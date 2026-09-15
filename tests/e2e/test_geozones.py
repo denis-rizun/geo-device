@@ -16,7 +16,7 @@ async def create(
     client: AsyncClient, payload: dict[str, Any] | None = None, headers: dict[str, str] | None = None
 ) -> dict[str, Any]:
     response = await client.post("/geozones", json=payload or PAYLOAD, headers=headers or HEADERS)
-    return response.json()
+    return response.json()  # type: ignore[no-any-return]
 
 
 class TestCreateGeozone:
