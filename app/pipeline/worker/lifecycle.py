@@ -83,7 +83,7 @@ class Supervisor:
 
     def _is_running(self, spec: TaskSpec) -> bool:
         task = self._tasks.get(spec.name)
-        return task and not task.done()
+        return task is not None and not task.done()
 
     def _spawn(self, spec: TaskSpec) -> None:
         self._tasks[spec.name] = asyncio.create_task(spec.factory(), name=spec.name)

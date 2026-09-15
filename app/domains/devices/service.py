@@ -28,7 +28,9 @@ class DeviceService:
             await stream.publish(self._redis, [self._to_ping(point) for point in payload.points])
         except REDIS_ERRORS as exc:
             logger.error("ingest queue unavailable", error=str(exc))
-            raise ServiceUnavailableError("Ingest queue is unavailable, retry later", retry_after_s=RETRY_AFTER_S) from exc
+            raise ServiceUnavailableError(
+                "Ingest queue is unavailable, retry later", retry_after_s=RETRY_AFTER_S
+            ) from exc
 
         return LocationAcceptedResponse(accepted=len(payload.points), backlog=backlog)
 
