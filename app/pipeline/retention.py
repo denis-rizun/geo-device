@@ -44,4 +44,4 @@ async def retention_worker() -> None:
         try:
             await purge_expired_pings()
         except (SQLAlchemyError, OSError, TimeoutError) as exc:
-            logger.warning("retention pass failed", error=type(exc).__name__, error_detail=str(exc))
+            logger.warning("retention pass failed", error=str(exc))
