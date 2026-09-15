@@ -31,6 +31,9 @@
     li:last-child { border-bottom: 0; }
     .meta { color: var(--muted); font-size: 11px; }
     .alert .name { color: var(--alert); font-weight: 600; }
+    .alert { cursor: pointer; }
+    .alert:hover { background: #222833; }
+    .marker-label { font-variant-numeric: tabular-nums; }
     .hint { color: var(--muted); font-size: 11px; }
   </style>
 </head>
@@ -47,6 +50,11 @@
       </div>
       <div class="status"><span id="dot" class="dot"></span><span id="state">offline</span></div>
       <div class="status" id="counters">devices 0 · alerts 0</div>
+      <div class="status" id="last">no data yet</div>
+      <div class="row" style="margin-top: 8px;">
+        <button id="fit" class="ghost">Fit devices</button>
+        <button id="clear" class="ghost">Clear devices</button>
+      </div>
     </section>
 
     <section>
@@ -97,6 +105,7 @@
   let socket = null;
   let pendingCenter = null;
   let alertCount = 0;
+  let fittedOnce = false;
 
   const userId = () => $("user").value.trim();
   const headers = () => ({ "Content-Type": "application/json", "X-User-ID": userId() });
@@ -110,20 +119,46 @@
     $("counters").textContent = `devices ${markers.size} · alerts ${alertCount}`;
   }
 
+  function noteUpdate(count) {
+    $("last").textContent = `last packet ${new Date().toLocaleTimeString()} · ${count} position(s)`;
+  }
+
+  function fitDevices() {
+    if (!markers.size) return;
+    map.fitBounds(L.latLngBounds([...markers.values()].map((m) => m.getLatLng())).pad(0.25));
+  }
+
+  function clearDevices() {
+    deviceLayer.clearLayers();
+    markers.clear();
+    fittedOnce = false;
+    updateCounters();
+  }
+
+  const deviceTooltip = (deviceId, lat, lon, recordedAt) =>
+    `<span class="marker-label">${deviceId}<br>${lat.toFixed(4)}, ${lon.toFixed(4)}`
+    + `<br>${new Date(recordedAt).toLocaleTimeString()}</span>`;
+
   function drawPositions(positions) {
-    for (const [deviceId, lat, lon] of positions) {
+    for (const [deviceId, lat, lon, recordedAt] of positions) {
       const marker = markers.get(deviceId);
       if (marker) {
         marker.setLatLng([lat, lon]);
+        marker.setTooltipContent(deviceTooltip(deviceId, lat, lon, recordedAt));
         continue;
       }
       const created = L.circleMarker([lat, lon], {
-        radius: 3, color: "#4ea1ff", weight: 1, fillOpacity: 0.85,
-      }).bindTooltip(deviceId);
+        radius: 6, color: "#0b1320", weight: 2, fillColor: "#4ea1ff", fillOpacity: 0.95,
+      }).bindTooltip(deviceTooltip(deviceId, lat, lon, recordedAt));
       created.addTo(deviceLayer);
       markers.set(deviceId, created);
     }
     updateCounters();
+    noteUpdate(positions.length);
+    if (!fittedOnce && markers.size) {
+      fittedOnce = true;
+      fitDevices();
+    }
   }
 
   function drawAlerts(alerts) {
@@ -132,9 +167,11 @@
       alertCount += 1;
       const item = document.createElement("li");
       item.className = "alert";
+      item.title = "click to centre the map on this alert";
       item.innerHTML = `<span><span class="name">${alert.geozone_name}</span><br>`
-        + `<span class="meta">${alert.device_id}</span></span>`
+        + `<span class="meta">${alert.device_id} · ${alert.lat.toFixed(4)}, ${alert.lon.toFixed(4)}</span></span>`
         + `<span class="meta">${new Date(alert.recorded_at).toLocaleTimeString()}</span>`;
+      item.onclick = () => map.setView([alert.lat, alert.lon], Math.max(map.getZoom(), 14));
       list.prepend(item);
     }
     while (list.children.length > MAX_ALERTS) list.lastChild.remove();
@@ -149,7 +186,7 @@
     socket = new WebSocket(`${scheme}//${location.host}/ws?user_id=${encodeURIComponent(userId())}`);
     setState("connecting…", false);
 
-    socket.onopen = () => { setState(`live as ${userId()}`, true); loadZones(); };
+    socket.onopen = () => { setState(`live as ${userId()}`, true); fittedOnce = false; loadZones(); };
     socket.onclose = (event) => setState(`offline (code ${event.code})`, false);
     socket.onerror = () => setState("connection error", false);
     socket.onmessage = (event) => {
@@ -225,6 +262,8 @@
   $("connect").onclick = connect;
   $("disconnect").onclick = disconnect;
   $("create").onclick = createZone;
+  $("fit").onclick = fitDevices;
+  $("clear").onclick = clearDevices;
   updateCounters();
 </script>
 </body>
