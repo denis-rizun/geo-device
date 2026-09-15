@@ -11,11 +11,7 @@ import geoalchemy2
 import sqlalchemy as sa
 from alembic import op
 
-from app.domains.geozones.constants import (
-    CREATE_BOUNDS_FUNCTION,
-    CREATE_BOUNDS_TRIGGER,
-    DROP_BOUNDS_FUNCTION,
-)
+from migrations.constants import CREATE_BOUNDS_FUNCTION, CREATE_BOUNDS_TRIGGER, DROP_BOUNDS_FUNCTION
 
 revision: str = "0002"
 down_revision: str | None = "0001"

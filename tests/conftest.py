@@ -10,20 +10,31 @@ from app.core.config import config
 from app.core.db import Base
 from app.domains.devices import models as _device_models
 from app.domains.geozones import models as _geozone_models
-from app.domains.geozones.constants import CREATE_BOUNDS_FUNCTION, CREATE_BOUNDS_TRIGGER
+from migrations.constants import CREATE_BOUNDS_FUNCTION, CREATE_BOUNDS_TRIGGER
 
 _ = (_device_models, _geozone_models)
 
 ADMIN_DATABASE = "postgres"
 
 
+def _connect_admin(autocommit: bool = False) -> psycopg.Connection:
+    return psycopg.connect(
+        host=config.database.TEST_HOST,
+        port=config.database.PORT,
+        user=config.database.USER,
+        password=config.database.PASSWORD.get_secret_value(),
+        dbname=ADMIN_DATABASE,
+        autocommit=autocommit,
+    )
+
+
 def _run_admin(statement: str) -> None:
-    with psycopg.connect(config.database.get_test_url(None, ADMIN_DATABASE), autocommit=True) as connection:
+    with _connect_admin(autocommit=True) as connection:
         connection.execute(statement)
 
 
 def _database_exists() -> bool:
-    with psycopg.connect(config.database.get_test_url(None, ADMIN_DATABASE)) as connection:
+    with _connect_admin() as connection:
         row = connection.execute(
             "SELECT 1 FROM pg_database WHERE datname = %s", (config.database.TEST_DATABASE,)
         ).fetchone()

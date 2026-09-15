@@ -56,8 +56,8 @@ class DatabaseSettings(BaseSettings):
     def get_url(self, driver: str | None = "asyncpg") -> str:
         return self._build_url(self.HOST, self.DATABASE, driver)
 
-    def get_test_url(self, driver: str | None = "asyncpg", database: str | None = None) -> str:
-        return self._build_url(self.TEST_HOST, database or self.TEST_DATABASE, driver)
+    def get_test_url(self, driver: str | None = "asyncpg") -> str:
+        return self._build_url(self.TEST_HOST, self.TEST_DATABASE, driver)
 
     def _build_url(self, host: str, database: str, driver: str | None) -> str:
         driver = f"+{driver}" if driver else ""
