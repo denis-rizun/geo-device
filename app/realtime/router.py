@@ -1,5 +1,6 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
+from app.realtime.constants import WS_DISCONNECT_TYPE
 from app.realtime.dependencies import SubscriberDep, WSUserDep
 from app.realtime.registry import Connection
 
@@ -13,7 +14,9 @@ async def stream_updates(websocket: WebSocket, user_id: WSUserDep, subscriber: S
     await subscriber.attach(connection)
     try:
         while True:
-            await websocket.receive_text()
+            message = await websocket.receive()
+            if message["type"] == WS_DISCONNECT_TYPE:
+                break
     except WebSocketDisconnect:
         pass
     finally:

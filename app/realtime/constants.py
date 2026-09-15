@@ -5,6 +5,8 @@ POSITION_CHANNEL = "positions"
 ALERT_MESSAGE_TYPE = "geozone_alert"
 POSITION_MESSAGE_TYPE = "device_positions"
 
+WS_DISCONNECT_TYPE = "websocket.disconnect"
+
 CLOSE_INVALID_USER = 1008
 
 RESUBSCRIBE_BACKOFF_S = 0.5
