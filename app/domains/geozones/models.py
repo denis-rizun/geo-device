@@ -1,5 +1,6 @@
 from datetime import datetime
 
+from geoalchemy2 import Geometry
 from geoalchemy2.elements import WKBElement
 from sqlalchemy import (
     CheckConstraint,
@@ -12,7 +13,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
-from app.core.utils import GEOGRAPHY_POINT
+from app.core.utils import GEOGRAPHY_POINT, SRID
 from app.domains.geozones.constants import MAX_NAME_LENGTH, MAX_RADIUS_M
 
 
@@ -25,6 +26,7 @@ class Geozone(Base):
         ),
         UniqueConstraint("user_id", "name", name="uq_geozones_user_name"),
         Index("ix_geozones_center_gist", "center", postgresql_using="gist"),
+        Index("ix_geozones_bounds_gist", "bounds", postgresql_using="gist"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -32,6 +34,10 @@ class Geozone(Base):
     name: Mapped[str] = mapped_column(String(MAX_NAME_LENGTH))
     center: Mapped[WKBElement] = mapped_column(GEOGRAPHY_POINT)
     radius_m: Mapped[float]
+    bounds: Mapped[WKBElement] = mapped_column(
+        Geometry(geometry_type="POLYGON", srid=SRID, spatial_index=False),
+        nullable=False,
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

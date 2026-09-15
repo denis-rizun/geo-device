@@ -20,7 +20,8 @@ _MATCH_SQL = text(f"""
              CAST(:recorded_ats AS timestamptz[])
          ) AS b(device_id, lon, lat, recorded_at)
     JOIN geozones g
-      ON ST_DWithin(
+      ON g.bounds && ST_SetSRID(ST_MakePoint(b.lon, b.lat), {SRID})
+     AND ST_DWithin(
              g.center,
              ST_SetSRID(ST_MakePoint(b.lon, b.lat), {SRID})::geography,
              g.radius_m
