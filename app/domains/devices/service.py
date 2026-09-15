@@ -1,5 +1,6 @@
 import structlog
 from redis.asyncio import Redis
+from redis.exceptions import RedisError
 
 from app.core.config import config
 from app.core.exceptions import ServiceUnavailableError
@@ -10,18 +11,25 @@ from app.pipeline.utils import Ping
 
 logger = structlog.getLogger(__name__)
 
+REDIS_ERRORS = (RedisError, OSError, TimeoutError)
+
 
 class DeviceService:
     def __init__(self, redis: Redis) -> None:
         self._redis = redis
 
     async def save_points(self, payload: LocationBatchRequest) -> LocationAcceptedResponse:
-        backlog = await stream.get_backlog(self._redis)
-        if backlog > config.ingest.BACKLOG_LIMIT:
-            logger.warning("backlog limit exceeded", backlog=backlog, limit=config.ingest.BACKLOG_LIMIT)
-            raise ServiceUnavailableError("Ingest backlog is full, retry later", retry_after_s=RETRY_AFTER_S)
+        try:
+            backlog = await stream.get_backlog(self._redis)
+            if backlog > config.ingest.BACKLOG_LIMIT:
+                logger.warning("backlog limit exceeded", backlog=backlog, limit=config.ingest.BACKLOG_LIMIT)
+                raise ServiceUnavailableError("Ingest backlog is full, retry later", retry_after_s=RETRY_AFTER_S)
 
-        await stream.publish(self._redis, [self._to_ping(point) for point in payload.points])
+            await stream.publish(self._redis, [self._to_ping(point) for point in payload.points])
+        except REDIS_ERRORS as exc:
+            logger.error("ingest queue unavailable", error=str(exc))
+            raise ServiceUnavailableError("Ingest queue is unavailable, retry later", retry_after_s=RETRY_AFTER_S) from exc
+
         return LocationAcceptedResponse(accepted=len(payload.points), backlog=backlog)
 
     @staticmethod

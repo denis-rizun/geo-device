@@ -1,5 +1,4 @@
 from itertools import batched
-from typing import Any, cast
 
 import structlog
 from redis.asyncio import Redis
@@ -13,6 +12,7 @@ from app.pipeline.constants import (
     GROUP_EXISTS_PREFIX,
     NEW_MESSAGES,
     PAYLOAD_FIELD,
+    PENDING_PINGS_KEY,
     READ_COUNT,
     STREAM,
 )
@@ -33,17 +33,27 @@ async def publish(redis: Redis, pings: list[Ping]) -> None:
                 maxlen=config.ingest.STREAM_MAX_LEN,
                 approximate=True,
             )
-
+        await pipe.incrby(PENDING_PINGS_KEY, len(pings))
         await pipe.execute()
 
 
 async def get_backlog(redis: Redis) -> int:
+    pending = await redis.get(PENDING_PINGS_KEY)
+    return max(int(pending or 0), 0)
+
+
+async def get_entry_backlog(redis: Redis) -> int:
     group_name = GROUP.encode()
     for group in await redis.xinfo_groups(STREAM):
         if group.get("name") == group_name:
             return int(group.get("lag") or 0) + int(group.get("pending") or 0)
-
     return 0
+
+
+async def reconcile_backlog(redis: Redis) -> None:
+    if await get_entry_backlog(redis) == 0 and await get_backlog(redis) != 0:
+        await redis.set(PENDING_PINGS_KEY, 0)
+        logger.info("pending pings counter reset")
 
 
 async def claim_stale(redis: Redis, consumer: str) -> list[StreamChunk]:
@@ -58,26 +68,30 @@ async def claim_stale(redis: Redis, consumer: str) -> list[StreamChunk]:
 
 
 async def read_new(redis: Redis, consumer: str, entry_id: str = NEW_MESSAGES) -> list[StreamChunk]:
-    response = cast(
-        "list[tuple[Any, list[Any]]]",
-        await redis.xreadgroup(
-            groupname=GROUP,
-            consumername=consumer,
-            streams={STREAM: entry_id},
-            count=READ_COUNT,
-            block=BLOCK_MS,
-        ),
+    response = await redis.xreadgroup(
+        groupname=GROUP,
+        consumername=consumer,
+        streams={STREAM: entry_id},
+        count=READ_COUNT,
+        block=BLOCK_MS,
     )
-    if not response:
+    # RESP2 answers with one [stream_name, entries] pair per requested stream
+    if not isinstance(response, list) or not response:
         return []
 
     _, entries = response[0]
     return parse_stream_chunk(entries)
 
 
-async def ack(redis: Redis, entry_ids: list[bytes]) -> None:
-    if entry_ids:
-        await redis.xack(STREAM, GROUP, *entry_ids)
+async def ack(redis: Redis, chunks: list[StreamChunk]) -> None:
+    if not chunks:
+        return
+
+    pings_count = sum(len(chunk.pings) for chunk in chunks)
+    async with redis.pipeline(transaction=False) as pipe:
+        await pipe.xack(STREAM, GROUP, *[chunk.entry_id for chunk in chunks])
+        await pipe.decrby(PENDING_PINGS_KEY, pings_count)
+        await pipe.execute()
 
 
 async def ensure_group(redis: Redis) -> None:
