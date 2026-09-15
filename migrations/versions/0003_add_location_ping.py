@@ -1,4 +1,4 @@
-"""location_pings
+"""add location pings
 
 Revision ID: 0003_location_pings
 Revises: 0002_geozones
