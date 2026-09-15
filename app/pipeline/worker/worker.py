@@ -1,4 +1,5 @@
 import asyncio
+from time import monotonic
 
 import structlog
 from redis.asyncio import Redis
@@ -26,9 +27,12 @@ from app.realtime.events import publish_alerts, publish_positions
 
 logger = structlog.getLogger(__name__)
 
+PIPELINE_ERRORS = (SQLAlchemyError, RedisError, OSError, TimeoutError)
+
 
 class IngestWorker:
     def __init__(self, redis: Redis, worker_id: int) -> None:
+        self.heartbeat = monotonic()
         self._redis = redis
         self._consumer = f"ingest-{worker_id}"
         self._logger: BoundLogger = logger.bind(consumer=self._consumer)
@@ -39,9 +43,11 @@ class IngestWorker:
 
     async def run(self) -> None:
         self._logger.info("ingest worker started")
+        self.heartbeat = monotonic()
         try:
             while True:
                 await self._step()
+                self.heartbeat = monotonic()
         except asyncio.CancelledError:
             await self._drain()
             self._logger.info("ingest worker stopped")
@@ -50,7 +56,7 @@ class IngestWorker:
     async def _step(self) -> None:
         try:
             succeeded = await self._process_once()
-        except (RedisError, OSError) as exc:
+        except PIPELINE_ERRORS as exc:
             self._logger.warning("ingest loop failed", error=str(exc))
             succeeded = False
 
@@ -62,7 +68,10 @@ class IngestWorker:
         self._logger.warning("backed off", backoff_s=delay)
 
     async def _process_once(self) -> bool:
-        claimed = await self._claim_stale() if self._claim_ticker.due() else True
+        claimed = True
+        if self._claim_ticker.due():
+            claimed = await self._claim_stale()
+            await stream.reconcile_backlog(self._redis)
 
         chunks = await stream.read_new(self._redis, self._consumer)
         flushed = await self._flush(chunks) if chunks else True
@@ -81,28 +90,27 @@ class IngestWorker:
                 hits = await match_zones(session, pings)
                 await session.commit()
 
-        except (SQLAlchemyError, OSError) as exc:
+        except PIPELINE_ERRORS as exc:
             self._logger.warning(
                 "flush failed",
                 pings_length=len(pings),
-                error=type(exc).__name__,
-                error_detail=str(exc),
+                error=str(exc),
             )
             return False
 
         self._positions.update({ping.device_id: ping for ping in pings})
 
-        alerts_count = await self._alert(hits)
-        await stream.ack(self._redis, [chunk.entry_id for chunk in chunks])
+        alerts_count = await self._alert(hits, [ping.device_id for ping in pings])
+        await stream.ack(self._redis, chunks)
         self._logger.debug("flushed", written=written, hits=len(hits), alerts=alerts_count)
         return True
 
-    async def _alert(self, hits: list[ZoneHit]) -> int:
+    async def _alert(self, hits: list[ZoneHit], device_ids: list[str]) -> int:
         try:
-            entries = await filter_new_entries(self._redis, hits)
+            entries = await filter_new_entries(self._redis, hits, device_ids)
             return await publish_alerts(self._redis, entries)
-        except (RedisError, OSError) as exc:
-            self._logger.warning("alerting failed", error=type(exc).__name__, error_detail=str(exc))
+        except (RedisError, OSError, TimeoutError) as exc:
+            self._logger.warning("alerting failed", error=str(exc))
             return 0
 
     async def _broadcast_positions(self) -> None:
@@ -113,12 +121,11 @@ class IngestWorker:
         self._positions.clear()
         try:
             await publish_positions(self._redis, positions)
-        except (RedisError, OSError) as exc:
+        except (RedisError, OSError, TimeoutError) as exc:
             self._logger.warning(
                 "position broadcast failed",
                 positions_length=len(positions),
-                error=type(exc).__name__,
-                error_detail=str(exc),
+                error=str(exc),
             )
 
     async def _claim_stale(self) -> bool:
@@ -140,8 +147,5 @@ class IngestWorker:
                             return
         except TimeoutError:
             self._logger.warning("drain timed out", timeout_s=config.ingest.DRAIN_TIMEOUT_S)
-
-
-async def ingest_worker(redis: Redis, worker_id: int) -> None:
-    worker = IngestWorker(redis, worker_id)
-    await worker.run()
+        except PIPELINE_ERRORS as exc:
+            self._logger.warning("drain failed", error=str(exc))
