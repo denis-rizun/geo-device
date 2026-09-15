@@ -14,10 +14,10 @@ _MATCH_SQL = text(f"""
            b.lon,
            b.recorded_at
     FROM unnest(
-             :device_ids::text[],
-             :lons::float8[],
-             :lats::float8[],
-             :recorded_ats::timestamptz[]
+             CAST(:device_ids AS text[]),
+             CAST(:lons AS float8[]),
+             CAST(:lats AS float8[]),
+             CAST(:recorded_ats AS timestamptz[])
          ) AS b(device_id, lon, lat, recorded_at)
     JOIN geozones g
       ON ST_DWithin(
