@@ -24,7 +24,8 @@ alembic_config = context.config
 if alembic_config.config_file_name is not None:
     fileConfig(alembic_config.config_file_name)
 
-alembic_config.set_main_option("sqlalchemy.url", config.database.get_url("psycopg"))
+url = alembic_config.attributes.get("url") or config.database.get_url("psycopg")
+alembic_config.set_main_option("sqlalchemy.url", url)
 target_metadata = Base.metadata
 
 

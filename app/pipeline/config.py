@@ -31,5 +31,11 @@ class RedisSettings(BaseSettings):
     CONNECT_TIMEOUT_S: float = 5.0
     HEALTHCHECK_TIMEOUT_S: float = 3.0
 
+    TEST_HOST: str = "localhost"
+    TEST_DB: int = 15
+
     def get_url(self) -> str:
         return f"redis://{self.HOST}:{self.PORT}/{self.DB}"
+
+    def get_test_url(self) -> str:
+        return f"redis://{self.TEST_HOST}:{self.PORT}/{self.TEST_DB}"

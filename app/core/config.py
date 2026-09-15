@@ -51,13 +51,13 @@ class DatabaseSettings(BaseSettings):
     HEALTHCHECK_TIMEOUT_S: float = 3.0
 
     TEST_DATABASE: str = ""
+    TEST_HOST: str = "localhost"
 
-    def get_url(self, driver: str | None = "asyncpg", is_test: bool = False) -> str:
-        database = self.TEST_DATABASE if is_test else self.DATABASE
-        return self._build_url(self.HOST, database, driver)
+    def get_url(self, driver: str | None = "asyncpg") -> str:
+        return self._build_url(self.HOST, self.DATABASE, driver)
 
-    def get_test_url(self, driver: str | None = "asyncpg") -> str:
-        return self._build_url(self.HOST, self.TEST_DATABASE, driver)
+    def get_test_url(self, driver: str | None = "asyncpg", database: str | None = None) -> str:
+        return self._build_url(self.TEST_HOST, database or self.TEST_DATABASE, driver)
 
     def _build_url(self, host: str, database: str, driver: str | None) -> str:
         driver = f"+{driver}" if driver else ""
