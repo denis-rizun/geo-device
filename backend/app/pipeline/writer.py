@@ -1,10 +1,11 @@
-from sqlalchemy import insert
+from typing import Any, cast
+
+from sqlalchemy import CursorResult, insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.utils import SRID
 from app.domains.devices.models import LocationPing
 from app.pipeline.utils import Ping
-
-SRID = 4326
 
 
 async def write_pings(session: AsyncSession, pings: list[Ping]) -> int:
@@ -21,7 +22,7 @@ async def write_pings(session: AsyncSession, pings: list[Ping]) -> int:
             for ping in pings
         ]
     )
-    result = await session.execute(stmt)
+    result = cast("CursorResult[Any]", await session.execute(stmt))
     return result.rowcount
 
 

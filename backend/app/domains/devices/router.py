@@ -1,9 +1,11 @@
+from typing import Any
+
 from fastapi import APIRouter, status
 
 from app.domains.devices.dependencies import DeviceServiceDep
 from app.domains.devices.schemas import LocationAcceptedResponse, LocationBatchRequest
 
-_BACKLOG_FULL = {
+_BACKLOG_FULL: dict[int | str, dict[str, Any]] = {
     status.HTTP_503_SERVICE_UNAVAILABLE: {
         "description": "Ingest backlog is full, retry later",
         "headers": {

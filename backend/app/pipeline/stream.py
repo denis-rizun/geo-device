@@ -1,4 +1,5 @@
 from itertools import batched
+from typing import Any, cast
 
 import structlog
 from redis.asyncio import Redis
@@ -57,12 +58,15 @@ async def claim_stale(redis: Redis, consumer: str) -> list[StreamChunk]:
 
 
 async def read_new(redis: Redis, consumer: str, entry_id: str = NEW_MESSAGES) -> list[StreamChunk]:
-    response = await redis.xreadgroup(
-        groupname=GROUP,
-        consumername=consumer,
-        streams={STREAM: entry_id},
-        count=READ_COUNT,
-        block=BLOCK_MS,
+    response = cast(
+        "list[tuple[Any, list[Any]]]",
+        await redis.xreadgroup(
+            groupname=GROUP,
+            consumername=consumer,
+            streams={STREAM: entry_id},
+            count=READ_COUNT,
+            block=BLOCK_MS,
+        ),
     )
     if not response:
         return []

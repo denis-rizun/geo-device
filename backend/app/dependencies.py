@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import async_session
 from app.core.redis_client import get_redis
+from app.core.utils import MAX_ID_LENGTH
 
 
 async def get_session() -> AsyncGenerator[AsyncSession]:
@@ -21,7 +22,7 @@ async def get_current_user(user_id: Annotated[str | None, Header(alias="X-User-I
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="X-User-ID header is required",
         )
-    if len(user_id) > 64:
+    if len(user_id) > MAX_ID_LENGTH:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="X-User-ID doesn't follow supported format",

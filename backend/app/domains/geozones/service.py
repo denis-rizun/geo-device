@@ -1,13 +1,15 @@
-from geoalchemy2 import Geography, Geometry
-from sqlalchemy import cast, delete, func, insert, select, update
+import typing
+
+from geoalchemy2 import Geometry
+from sqlalchemy import CursorResult, cast, delete, func, insert, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ConflictError, ForbiddenError, NotFoundError
+from app.core.utils import GEOGRAPHY_POINT, SRID
 from app.domains.geozones.models import Geozone
 from app.domains.geozones.schemas import GeozoneCreateRequest, GeozoneResponse, GeozoneUpdateRequest
 
-_GEOGRAPHY_POINT = Geography(geometry_type="POINT", srid=4326, spatial_index=False)
 _READ_COLUMNS = (
     Geozone.id,
     Geozone.user_id,
@@ -89,7 +91,8 @@ class GeozoneService:
 
     async def delete(self, geozone: GeozoneResponse) -> None:
         stmt = delete(Geozone).where(Geozone.id == geozone.id)
-        deleted = (await self._session.execute(stmt)).rowcount
+        result = typing.cast("CursorResult[typing.Any]", await self._session.execute(stmt))
+        deleted = result.rowcount
         if not deleted:
             await self._session.rollback()
             raise NotFoundError(f"Geozone {geozone.id} not found")
@@ -97,4 +100,4 @@ class GeozoneService:
 
     @staticmethod
     def _make_point(lat: float, lon: float):
-        return cast(func.ST_SetSRID(func.ST_MakePoint(lon, lat), 4326), _GEOGRAPHY_POINT)
+        return cast(func.ST_SetSRID(func.ST_MakePoint(lon, lat), SRID), GEOGRAPHY_POINT)

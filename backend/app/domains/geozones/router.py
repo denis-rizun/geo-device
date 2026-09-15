@@ -1,4 +1,4 @@
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Query, Response, status
 
@@ -6,9 +6,13 @@ from app.dependencies import CurrentUserDep
 from app.domains.geozones.dependencies import GeozoneDep, GeozoneServiceDep
 from app.domains.geozones.schemas import GeozoneCreateRequest, GeozoneResponse, GeozoneUpdateRequest
 
-_UNAUTHORIZED = {status.HTTP_401_UNAUTHORIZED: {"description": "X-User-ID header has unsupported format"}}
-_NAME_TAKEN = {status.HTTP_409_CONFLICT: {"description": "Geozone with this name already exists"}}
-_GEOZONE_ACCESS = {
+_UNAUTHORIZED: dict[int | str, dict[str, Any]] = {
+    status.HTTP_401_UNAUTHORIZED: {"description": "X-User-ID header has unsupported format"}
+}
+_NAME_TAKEN: dict[int | str, dict[str, Any]] = {
+    status.HTTP_409_CONFLICT: {"description": "Geozone with this name already exists"}
+}
+_GEOZONE_ACCESS: dict[int | str, dict[str, Any]] = {
     status.HTTP_403_FORBIDDEN: {"description": "You don't have an access to that"},
     status.HTTP_404_NOT_FOUND: {"description": "Geozone not found"},
 }
