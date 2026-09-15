@@ -45,6 +45,10 @@ class DatabaseSettings(BaseSettings):
     PORT: int = 0
     POOL_SIZE: int = 5
     MAX_OVERFLOW: int = 10
+    POOL_TIMEOUT_S: float = 10.0
+    CONNECT_TIMEOUT_S: float = 5.0
+    COMMAND_TIMEOUT_S: float = 15.0
+    HEALTHCHECK_TIMEOUT_S: float = 3.0
 
     TEST_DATABASE: str = ""
 
@@ -63,7 +67,7 @@ class DatabaseSettings(BaseSettings):
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(**BASE_MODEL_CONFIG)
 
-    ENV: Literal["DEV", "PROD"] = "DEV"
+    ENV: Literal["DEV", "PROD"] = "PROD"
     api: APISettings = Field(default_factory=APISettings)
     logging: LoggerSettings = Field(default_factory=LoggerSettings)
     database: DatabaseSettings = Field(default_factory=DatabaseSettings)
