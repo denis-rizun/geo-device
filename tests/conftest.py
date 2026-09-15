@@ -10,6 +10,7 @@ from app.core.config import config
 from app.core.db import Base
 from app.domains.devices import models as _device_models
 from app.domains.geozones import models as _geozone_models
+from app.domains.geozones.constants import CREATE_BOUNDS_FUNCTION, CREATE_BOUNDS_TRIGGER
 
 _ = (_device_models, _geozone_models)
 
@@ -34,6 +35,8 @@ async def _create_schema(engine: AsyncEngine) -> None:
     async with engine.begin() as connection:
         await connection.execute(text(POSTGIS_EXTENSION))
         await connection.run_sync(Base.metadata.create_all)
+        await connection.execute(text(CREATE_BOUNDS_FUNCTION))
+        await connection.execute(text(CREATE_BOUNDS_TRIGGER))
 
 
 @pytest.fixture(scope="session")
