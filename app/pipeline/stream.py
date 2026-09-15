@@ -75,11 +75,11 @@ async def read_new(redis: Redis, consumer: str, entry_id: str = NEW_MESSAGES) ->
         count=READ_COUNT,
         block=BLOCK_MS,
     )
-    if not isinstance(response, list) or not response:
+    if not response:
         return []
 
-    _, entries = response[0]
-    return parse_stream_chunk(entries)
+    _, entries = response[0]  # type: ignore[index]
+    return parse_stream_chunk(entries)  # type: ignore[arg-type]
 
 
 async def ack(redis: Redis, chunks: list[StreamChunk]) -> None:

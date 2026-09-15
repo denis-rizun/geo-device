@@ -102,9 +102,7 @@ class TestUpdateGeozone:
     async def test_applies_a_partial_update(self, client_with_db: AsyncClient) -> None:
         created = await create(client_with_db)
 
-        response = await client_with_db.patch(
-            f"/geozones/{created['id']}", json={"name": "office"}, headers=HEADERS
-        )
+        response = await client_with_db.patch(f"/geozones/{created['id']}", json={"name": "office"}, headers=HEADERS)
 
         assert response.json()["name"] == "office"
 
@@ -112,9 +110,7 @@ class TestUpdateGeozone:
         await create(client_with_db, {**PAYLOAD, "name": "office"})
         created = await create(client_with_db)
 
-        response = await client_with_db.patch(
-            f"/geozones/{created['id']}", json={"name": "office"}, headers=HEADERS
-        )
+        response = await client_with_db.patch(f"/geozones/{created['id']}", json={"name": "office"}, headers=HEADERS)
 
         assert response.status_code == 409
 

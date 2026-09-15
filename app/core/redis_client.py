@@ -35,7 +35,7 @@ async def check_redis() -> bool:
     try:
         async with asyncio.timeout(config.redis.HEALTHCHECK_TIMEOUT_S):
             await _client.ping()
-    except (RedisError, OSError, TimeoutError):
+    except RedisError, OSError, TimeoutError:
         return False
 
     return True
