@@ -12,6 +12,8 @@ class IngestSettings(BaseSettings):
     BACKLOG_LIMIT: int = 10_000
     STREAM_MAX_LEN: int = 1_000_000
     DRAIN_TIMEOUT_S: float = 10.0
+    ZONE_ENTRY_TTL_S: int = 60
+    POSITION_FLUSH_INTERVAL_S: float = 1.0
 
 
 class RedisSettings(BaseSettings):

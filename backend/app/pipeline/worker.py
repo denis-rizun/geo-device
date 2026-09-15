@@ -1,6 +1,4 @@
 import asyncio
-import random
-from time import monotonic
 
 import structlog
 from redis.asyncio import Redis
@@ -16,47 +14,17 @@ from app.pipeline.constants import (
     CLAIM_JITTER_S,
     NEW_MESSAGES,
     PENDING_MESSAGES,
+    POSITION_FLUSH_JITTER_S,
     RETRY_BACKOFF_MAX_S,
     RETRY_BACKOFF_S,
 )
-from app.pipeline.utils import StreamChunk
+from app.pipeline.matcher import match_zones
+from app.pipeline.presence import filter_new_entries
+from app.pipeline.utils import Backoff, Ping, StreamChunk, Ticker, ZoneHit
 from app.pipeline.writer import write_pings
+from app.realtime.events import publish_alerts, publish_positions
 
 logger = structlog.getLogger(__name__)
-
-
-class Backoff:
-    def __init__(self, start: float, limit: float) -> None:
-        self._start = start
-        self._limit = limit
-        self._delay = 0.0
-
-    def reset(self) -> None:
-        self._delay = 0.0
-
-    async def sleep(self) -> float:
-        self._delay = self._start if not self._delay else min(self._delay * 2, self._limit)
-        await asyncio.sleep(self._delay)
-        return self._delay
-
-
-class Ticker:
-    def __init__(self, interval: float, jitter: float) -> None:
-        self._interval = interval
-        self._jitter = jitter
-        self._next_at = monotonic() + self._period
-
-    @property
-    def _period(self) -> float:
-        return self._interval + random.uniform(0.0, self._jitter)
-
-    def due(self) -> bool:
-        now = monotonic()
-        if now < self._next_at:
-            return False
-
-        self._next_at = now + self._period
-        return True
 
 
 class IngestWorker:
@@ -65,7 +33,9 @@ class IngestWorker:
         self._consumer = f"ingest-{worker_id}"
         self._logger: BoundLogger = logger.bind(consumer=self._consumer)
         self._backoff = Backoff(RETRY_BACKOFF_S, RETRY_BACKOFF_MAX_S)
-        self._ticker = Ticker(CLAIM_INTERVAL_S, CLAIM_JITTER_S)
+        self._claim_ticker = Ticker(CLAIM_INTERVAL_S, CLAIM_JITTER_S)
+        self._position_ticker = Ticker(config.ingest.POSITION_FLUSH_INTERVAL_S, POSITION_FLUSH_JITTER_S)
+        self._positions: dict[str, Ping] = {}
 
     async def run(self) -> None:
         self._logger.info("ingest worker started")
@@ -79,21 +49,26 @@ class IngestWorker:
 
     async def _step(self) -> None:
         try:
-            ok = True
-            if self._ticker.due():
-                ok = await self._claim_stale()
+            succeeded = await self._process_once()
+        except (RedisError, OSError) as exc:
+            self._logger.warning("ingest loop failed", error=str(exc))
+            succeeded = False
 
-            chunks = await stream.read_new(self._redis, self._consumer)
-            if chunks:
-                ok = await self._flush(chunks) and ok
-        except (RedisError, SQLAlchemyError, OSError) as exc:
-            self._logger.warning("ingest loop failed", error=type(exc).__name__, error_detail=str(exc))
-            ok = False
-
-        if ok:
+        if succeeded:
             self._backoff.reset()
-        else:
-            self._logger.warning("backing off", backoff_s=await self._backoff.sleep())
+            return
+
+        delay = await self._backoff.sleep()
+        self._logger.warning("backed off", backoff_s=delay)
+
+    async def _process_once(self) -> bool:
+        claimed = await self._claim_stale() if self._claim_ticker.due() else True
+
+        chunks = await stream.read_new(self._redis, self._consumer)
+        flushed = await self._flush(chunks) if chunks else True
+        await self._broadcast_positions()
+
+        return claimed and flushed
 
     async def _flush(self, chunks: list[StreamChunk]) -> bool:
         pings = [ping for chunk in chunks for ping in chunk.pings]
@@ -103,7 +78,9 @@ class IngestWorker:
         try:
             async with async_session() as session:
                 written = await write_pings(session, pings)
+                hits = await match_zones(session, pings)
                 await session.commit()
+
         except (SQLAlchemyError, OSError) as exc:
             self._logger.warning(
                 "flush failed",
@@ -113,9 +90,36 @@ class IngestWorker:
             )
             return False
 
+        self._positions.update({ping.device_id: ping for ping in pings})
+
+        alerts_count = await self._alert(hits)
         await stream.ack(self._redis, [chunk.entry_id for chunk in chunks])
-        self._logger.debug("flushed", written=written)
+        self._logger.debug("flushed", written=written, hits=len(hits), alerts=alerts_count)
         return True
+
+    async def _alert(self, hits: list[ZoneHit]) -> int:
+        try:
+            entries = await filter_new_entries(self._redis, hits)
+            return await publish_alerts(self._redis, entries)
+        except (RedisError, OSError) as exc:
+            self._logger.warning("alerting failed", error=type(exc).__name__, error_detail=str(exc))
+            return 0
+
+    async def _broadcast_positions(self) -> None:
+        if not self._positions or not self._position_ticker.due():
+            return
+
+        positions = list(self._positions.values())
+        self._positions.clear()
+        try:
+            await publish_positions(self._redis, positions)
+        except (RedisError, OSError) as exc:
+            self._logger.warning(
+                "position broadcast failed",
+                positions_length=len(positions),
+                error=type(exc).__name__,
+                error_detail=str(exc),
+            )
 
     async def _claim_stale(self) -> bool:
         stale = await stream.claim_stale(self._redis, self._consumer)

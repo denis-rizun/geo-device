@@ -7,6 +7,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.core.utils import BASE_MODEL_CONFIG
 from app.pipeline.config import IngestSettings, RedisSettings
+from app.realtime.config import RealtimeSettings
 
 
 class APISettings(BaseSettings):
@@ -68,6 +69,7 @@ class Settings(BaseSettings):
     database: DatabaseSettings = Field(default_factory=DatabaseSettings)
     ingest: IngestSettings = Field(default_factory=IngestSettings)
     redis: RedisSettings = Field(default_factory=RedisSettings)
+    realtime: RealtimeSettings = Field(default_factory=RealtimeSettings)
 
     @classmethod
     @lru_cache
