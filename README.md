@@ -116,6 +116,7 @@ app/
   pipeline/        redis stream wrapper, matcher, presence, retention, worker/ (ingest loop + supervisor)
   realtime/        websocket registry, pub/sub subscriber, event publishers
 migrations/        alembic revisions
+tests/             unit / integration / e2e suites for the core logic
 frontend/          Leaflet demo UI (should be in separate repo)
 ```
 
@@ -123,19 +124,21 @@ frontend/          Leaflet demo UI (should be in separate repo)
 
 All settings come from `.env` (see `.env.example`);
 
-| Variable                                                    | Default     | Meaning                                                      |
-|-------------------------------------------------------------|-------------|--------------------------------------------------------------|
-| `INGEST_WORKERS`                                            | 4           | Stream consumers per process; bounds the DB connection usage |
-| `INGEST_CHUNK_SIZE`                                         | 500         | Pings per stream entry                                       |
-| `INGEST_MAX_HTTP_BATCH_SIZE`                                | 1000        | Hard cap on one ingest request                               |
-| `INGEST_BACKLOG_LIMIT`                                      | 200000      | Unwritten **pings** above which ingest answers `503`         |
-| `INGEST_STREAM_MAX_LEN`                                     | 4000        | Stream trim length, in entries (~200 MB of Redis)            |
-| `INGEST_DRAIN_TIMEOUT_S`                                    | 10          | Shutdown drain budget                                        |
-| `INGEST_ZONE_ENTRY_TTL_S`                                   | 60          | How long a device stays "inside" without reporting           |
-| `INGEST_POSITION_FLUSH_INTERVAL_S`                          | 1.0         | Live-map snapshot period                                     |
-| `INGEST_MAX_PING_AGE_S` / `INGEST_MAX_PING_SKEW_S`          | 86400 / 300 | Accepted `recorded_at` window                                |
-| `INGEST_RETENTION_DAYS`                                     | 7           | How long `location_pings` rows are kept                      |
-| `INGEST_RETENTION_INTERVAL_S`                               | 3600        | Period of the retention pass                                 |
-| `REALTIME_QUEUE_SIZE`                                       | 64          | Per-connection send queue                                    |
-| `POSTGRES_POOL_SIZE` / `POSTGRES_MAX_OVERFLOW`              | 10 / 10     | SQLAlchemy pool, per uvicorn worker                          |
-| `POSTGRES_CONNECT_TIMEOUT_S` / `POSTGRES_COMMAND_TIMEOUT_S` | 5 / 15      | asyncpg timeouts — a dead database fails fast                |
+| Variable                                                    | Default        | Meaning                                                      |
+|-------------------------------------------------------------|----------------|--------------------------------------------------------------|
+| `INGEST_WORKERS`                                            | 4              | Stream consumers per process; bounds the DB connection usage |
+| `INGEST_CHUNK_SIZE`                                         | 500            | Pings per stream entry                                       |
+| `INGEST_MAX_HTTP_BATCH_SIZE`                                | 1000           | Hard cap on one ingest request                               |
+| `INGEST_BACKLOG_LIMIT`                                      | 200000         | Unwritten **pings** above which ingest answers `503`         |
+| `INGEST_STREAM_MAX_LEN`                                     | 4000           | Stream trim length, in entries (~200 MB of Redis)            |
+| `INGEST_DRAIN_TIMEOUT_S`                                    | 10             | Shutdown drain budget                                        |
+| `INGEST_ZONE_ENTRY_TTL_S`                                   | 60             | How long a device stays "inside" without reporting           |
+| `INGEST_POSITION_FLUSH_INTERVAL_S`                          | 1.0            | Live-map snapshot period                                     |
+| `INGEST_MAX_PING_AGE_S` / `INGEST_MAX_PING_SKEW_S`          | 86400 / 300    | Accepted `recorded_at` window                                |
+| `INGEST_RETENTION_DAYS`                                     | 7              | How long `location_pings` rows are kept                      |
+| `INGEST_RETENTION_INTERVAL_S`                               | 3600           | Period of the retention pass                                 |
+| `REALTIME_QUEUE_SIZE`                                       | 64             | Per-connection send queue                                    |
+| `POSTGRES_TEST_DATABASE` / `POSTGRES_TEST_HOST`             | — / localhost  | Database and host used by integration and e2e tests          |
+| `REDIS_TEST_DB` / `REDIS_TEST_HOST`                         | 15 / localhost | Redis db and host used by integration and e2e tests          |
+| `POSTGRES_POOL_SIZE` / `POSTGRES_MAX_OVERFLOW`              | 10 / 10        | SQLAlchemy pool, per uvicorn worker                          |
+| `POSTGRES_CONNECT_TIMEOUT_S` / `POSTGRES_COMMAND_TIMEOUT_S` | 5 / 15         | asyncpg timeouts — a dead database fails fast                |
