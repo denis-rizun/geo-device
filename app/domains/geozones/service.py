@@ -1,7 +1,7 @@
-import typing
+from typing import Any
 
 from geoalchemy2 import Geometry
-from sqlalchemy import CursorResult, cast, delete, func, insert, select, update
+from sqlalchemy import cast, delete, func, insert, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -58,9 +58,9 @@ class GeozoneService:
         return [GeozoneResponse.model_validate(row) for row in rows]
 
     async def retrieve(self, geozone_id: int, user_id: str) -> GeozoneResponse:
-        stmt = select(*_READ_COLUMNS).where(Geozone.id == geozone_id)
+        stmt = select(*_READ_COLUMNS).where(Geozone.id == geozone_id, Geozone.user_id == user_id)
         row = (await self._session.execute(stmt)).one_or_none()
-        if not row or row.user_id != user_id:
+        if not row:
             raise NotFoundError(f"Geozone {geozone_id} not found")
 
         return GeozoneResponse.model_validate(row)
@@ -73,14 +73,19 @@ class GeozoneService:
         if "lat" in fields:
             values["center"] = self._make_point(fields["lat"], fields["lon"])
 
-        stmt = update(Geozone).where(Geozone.id == geozone.id).values(**values).returning(*_READ_COLUMNS)
+        stmt = (
+            update(Geozone)
+            .where(Geozone.id == geozone.id, Geozone.user_id == geozone.user_id)
+            .values(**values)
+            .returning(*_READ_COLUMNS)
+        )
         try:
             row = (await self._session.execute(stmt)).one_or_none()
         except IntegrityError as exc:
             await self._session.rollback()
             raise ConflictError("Geozone name is already taken") from exc
 
-        if row is None:
+        if not row:
             await self._session.rollback()
             raise NotFoundError(f"Geozone {geozone.id} not found")
 
@@ -88,14 +93,14 @@ class GeozoneService:
         return GeozoneResponse.model_validate(row)
 
     async def delete(self, geozone: GeozoneResponse) -> None:
-        stmt = delete(Geozone).where(Geozone.id == geozone.id)
-        result = typing.cast("CursorResult[typing.Any]", await self._session.execute(stmt))
-        deleted = result.rowcount
+        stmt = delete(Geozone).where(Geozone.id == geozone.id, Geozone.user_id == geozone.user_id).returning(Geozone.id)
+        deleted = (await self._session.execute(stmt)).one_or_none()
         if not deleted:
             await self._session.rollback()
             raise NotFoundError(f"Geozone {geozone.id} not found")
+
         await self._session.commit()
 
     @staticmethod
-    def _make_point(lat: float, lon: float):
+    def _make_point(lat: float, lon: float) -> Any:
         return cast(func.ST_SetSRID(func.ST_MakePoint(lon, lat), SRID), GEOGRAPHY_POINT)
