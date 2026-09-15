@@ -24,11 +24,12 @@ class GeozoneUpdateRequest(BaseSchema):
     radius_m: RadiusM | None = None
 
     @model_validator(mode="after")
-    def check_center_pair(self) -> Self:
+    def check_fields(self) -> Self:
+        explicit_nulls = sorted(field for field in self.model_fields_set if getattr(self, field) is None)
+        if explicit_nulls:
+            raise ValueError(f"fields must not be null: {', '.join(explicit_nulls)}")
         if (self.lat is None) != (self.lon is None):
             raise ValueError("lat and lon must be provided together")
-        if not self.model_fields_set:
-            raise ValueError("at least one field must be provided")
         return self
 
 
