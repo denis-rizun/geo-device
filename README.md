@@ -15,8 +15,8 @@ docker compose up --build -d
 ```
 
 - API — <http://localhost:8000>
-- Swagger — <http://localhost:8000/docs>
 - Demo map — <http://localhost:8000/api/v1/ui/>
+- Swagger — <http://localhost:8000/docs>, (only with `ENV=DEV`)
 
 ## Load generator
 
@@ -68,7 +68,7 @@ Every REST call identifies the user with the `X-User-ID` header. Geozones are st
 ### WebSocket protocol
 
 ```jsonc
-// every ~1s, only the devices that reported in that window: [device_id, lat, lon, recorded_at]
+// a snapshot per ingest worker every ~1s (so up to INGEST_WORKERS messages per second),
 {"type": "device_positions", "positions": [["dev-00001", 50.4501, 30.5234, "2026-09-15T08:00:00+00:00"]]}
 
 // when a device enters one of this user's zones
@@ -81,14 +81,31 @@ Every REST call identifies the user with the `X-User-ID` header. Geozones are st
 
 ## Architecture
 
-Request flow at a glance: [`docs/architecture.excalidraw`](docs/architecture.excalidraw) (open in <https://excalidraw.com>).
+![Request flow](docs/architecture.png)
+
+Source: [`docs/architecture.excalidraw`](docs/architecture.excalidraw) (open in <https://excalidraw.com>).
+
+### Components
+
+| Component                | File                               | What it does                                                                                                                                                                                                                                                                                          |
+|--------------------------|------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **Redis Stream** `pings` | `app/pipeline/stream.py`           | Buffer between ingest and the database. `POST /ingest/batch` only does an `XADD` and returns `202`, so a slow database never holds up the request. A `pings:pending` counter tracks unwritten pings and trips the `503 + Retry-After` gate.                                                           |
+| **Ingest workers**       | `app/pipeline/worker/worker.py`    | `INGEST_WORKERS` consumers in one group. Each loop: `XREADGROUP` a few entries, bulk-insert the pings, match them against geozones, publish alerts and positions, `XACK`. Picks up entries left behind by a dead consumer with `XAUTOCLAIM`, and drains the stream on shutdown.                       |
+| **Supervisor**           | `app/pipeline/worker/lifecycle.py` | Runs the ingest workers and the retention pass as supervised tasks. Restarts any task that exits, crashes, or misses its heartbeat for 60s, and counts restart flapping.                                                                                                                              |
+| **Matcher**              | `app/pipeline/matcher.py`          | One SQL statement per batch. Pings get `unnest`ed into a values list and joined against `geozones`. The GiST index on `bounds` cuts the candidate list, then `ST_DWithin` on `geography` does the exact check. Python never touches distances.                                                        |
+| **Presence**             | `app/pipeline/presence.py`         | Answers "just entered", not "is inside". A Redis set per device holds its current zones; a Lua script syncs that set and returns only the new ones, so a device parked in a zone alerts once instead of every ping. The key expires after `INGEST_ZONE_ENTRY_TTL_S`, so silent devices get forgotten. |
+| **Redis Pub/Sub**        | `app/realtime/events.py`           | Fan-out between processes. Positions go to one shared `positions` channel; alerts go to a per-user `alerts:{user_id}` channel, which is what keeps zones isolated across connections.                                                                                                                 |
+| **Subscriber**           | `app/realtime/subscriber.py`       | One pub/sub connection per process. Subscribes to `alerts:{user_id}` on a user's first connection, unsubscribes when the last one leaves, and dispatches each message into the registry. Resubscribes with backoff if Redis drops it.                                                                 |
+| **Connection registry**  | `app/realtime/registry.py`         | `user_id → set of connections`, so one user gets the same stream on laptop and phone. Every connection has its own bounded queue and sender task. A slow client can't stall dispatch: its positions get dropped, while alerts evict older messages to get through.                                    |
+| **Retention worker**     | `app/pipeline/retention.py`        | Deletes `location_pings` rows older than `INGEST_RETENTION_DAYS` in batches, keeping the table bounded.                                                                                                                                                                                               |
+
 
 ### Ingest path and high throughput
 
 ```
 device → POST /ingest/batch → Redis Stream "pings" → consumer group → ingest workers
                                                                           ├→ bulk INSERT into location_pings
-                                                                          ├→ ST_DWithin match → alerts:{user_id}
+                                                                          ├→ bounds && point → ST_DWithin → alerts:{user_id}
                                                                           └→ 1s position snapshot → positions
 ```
 
@@ -96,26 +113,29 @@ device → POST /ingest/batch → Redis Stream "pings" → consumer group → in
 app/
   core/            config, db, logging, redis client, shared types
   domains/         devices (ingest) and geozones (CRUD)
-  pipeline/        redis stream wrapper, ingest workers, matcher, alert suppression
+  pipeline/        redis stream wrapper, matcher, presence, retention, worker/ (ingest loop + supervisor)
   realtime/        websocket registry, pub/sub subscriber, event publishers
-generator.py       load generator (10k devices)
 migrations/        alembic revisions
-frontend/          Leaflet demo UI
+frontend/          Leaflet demo UI (should be in separate repo)
 ```
 
 ## Configuration
 
 All settings come from `.env` (see `.env.example`);
 
-| Variable                                       | Default  | Meaning                                                      |
-|------------------------------------------------|----------|--------------------------------------------------------------|
-| `INGEST_WORKERS`                               | 4        | Stream consumers per process; bounds the DB connection usage |
-| `INGEST_CHUNK_SIZE`                            | 500      | Pings per stream entry                                       |
-| `INGEST_MAX_HTTP_BATCH_SIZE`                   | 1000     | Hard cap on one ingest request                               |
-| `INGEST_BACKLOG_LIMIT`                         | 10000    | Backlog above which ingest answers `503`                     |
-| `INGEST_STREAM_MAX_LEN`                        | 1000000  | Stream trim length                                           |
-| `INGEST_DRAIN_TIMEOUT_S`                       | 10       | Shutdown drain budget                                        |
-| `INGEST_ZONE_ENTRY_TTL_S`                      | 60       | How long a device stays "inside" without reporting           |
-| `INGEST_POSITION_FLUSH_INTERVAL_S`             | 1.0      | Live-map snapshot period                                     |
-| `REALTIME_QUEUE_SIZE`                          | 64       | Per-connection send queue                                    |
-| `POSTGRES_POOL_SIZE` / `POSTGRES_MAX_OVERFLOW` | 20 / 200 | SQLAlchemy pool                                              |
+| Variable                                                    | Default     | Meaning                                                      |
+|-------------------------------------------------------------|-------------|--------------------------------------------------------------|
+| `INGEST_WORKERS`                                            | 4           | Stream consumers per process; bounds the DB connection usage |
+| `INGEST_CHUNK_SIZE`                                         | 500         | Pings per stream entry                                       |
+| `INGEST_MAX_HTTP_BATCH_SIZE`                                | 1000        | Hard cap on one ingest request                               |
+| `INGEST_BACKLOG_LIMIT`                                      | 200000      | Unwritten **pings** above which ingest answers `503`         |
+| `INGEST_STREAM_MAX_LEN`                                     | 4000        | Stream trim length, in entries (~200 MB of Redis)            |
+| `INGEST_DRAIN_TIMEOUT_S`                                    | 10          | Shutdown drain budget                                        |
+| `INGEST_ZONE_ENTRY_TTL_S`                                   | 60          | How long a device stays "inside" without reporting           |
+| `INGEST_POSITION_FLUSH_INTERVAL_S`                          | 1.0         | Live-map snapshot period                                     |
+| `INGEST_MAX_PING_AGE_S` / `INGEST_MAX_PING_SKEW_S`          | 86400 / 300 | Accepted `recorded_at` window                                |
+| `INGEST_RETENTION_DAYS`                                     | 7           | How long `location_pings` rows are kept                      |
+| `INGEST_RETENTION_INTERVAL_S`                               | 3600        | Period of the retention pass                                 |
+| `REALTIME_QUEUE_SIZE`                                       | 64          | Per-connection send queue                                    |
+| `POSTGRES_POOL_SIZE` / `POSTGRES_MAX_OVERFLOW`              | 10 / 10     | SQLAlchemy pool, per uvicorn worker                          |
+| `POSTGRES_CONNECT_TIMEOUT_S` / `POSTGRES_COMMAND_TIMEOUT_S` | 5 / 15      | asyncpg timeouts — a dead database fails fast                |
