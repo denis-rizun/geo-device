@@ -1,3 +1,18 @@
+x-app: &app
+  build:
+    context: .
+    dockerfile: Dockerfile
+  image: geo-device:latest
+  env_file:
+    - .env
+  environment:
+    POSTGRES_HOST: postgres
+    POSTGRES_PORT: 5432
+    REDIS_HOST: redis
+    REDIS_PORT: 6379
+  networks:
+    - geo-device
+
 services:
   postgres:
     image: imresamu/postgis:17-3.5  # todo: change to arm64 build
@@ -17,9 +32,12 @@ services:
       -c synchronous_commit=off
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DATABASE}"]
-      interval: 30s
+      interval: 10s
       timeout: 3s
       retries: 10
+      start_period: 10s
+    networks:
+      - geo-device
 
   redis:
     image: redis:7-alpine
@@ -34,9 +52,37 @@ services:
       - redisdata:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
-      interval: 30s
+      interval: 10s
       timeout: 3s
       retries: 10
+    networks:
+      - geo-device
+
+  migrate:
+    <<: *app
+    command: ["migrate"]
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  app:
+    <<: *app
+    command: ["api"]
+    ports:
+      - "${API_PORT}:${API_PORT}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+networks:
+  geo-device:
+    driver: bridge
 
 volumes:
   pgdata:
