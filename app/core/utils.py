@@ -7,7 +7,7 @@ from pydantic_settings import SettingsConfigDict
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 BASE_MODEL_CONFIG = SettingsConfigDict(env_file=BASE_DIR / ".env", extra="ignore", env_file_encoding="utf-8")
-FRONTEND_DIR = BASE_DIR.parent / "frontend"
+FRONTEND_DIR = BASE_DIR / "frontend"
 
 SRID = 4326
 GEOGRAPHY_POINT = Geography(geometry_type="POINT", srid=SRID, spatial_index=False)
