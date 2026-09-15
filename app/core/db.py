@@ -1,7 +1,4 @@
-import asyncio
 
-from sqlalchemy import text
-from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
 
@@ -24,17 +21,6 @@ async_session = async_sessionmaker(engine, expire_on_commit=False)
 
 async def dispose_engine() -> None:
     await engine.dispose()
-
-
-async def check_database() -> bool:
-    try:
-        async with asyncio.timeout(config.database.HEALTHCHECK_TIMEOUT_S):
-            async with async_session() as session:
-                await session.execute(text("SELECT 1"))
-    except (SQLAlchemyError, OSError, TimeoutError):
-        return False
-
-    return True
 
 
 class Base(DeclarativeBase):
