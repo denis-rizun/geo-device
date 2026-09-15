@@ -15,7 +15,6 @@ from app.domains.geozones.constants import CREATE_BOUNDS_FUNCTION, CREATE_BOUNDS
 _ = (_device_models, _geozone_models)
 
 ADMIN_DATABASE = "postgres"
-POSTGIS_EXTENSION = "CREATE EXTENSION IF NOT EXISTS postgis"
 
 
 def _run_admin(statement: str) -> None:
@@ -33,7 +32,7 @@ def _database_exists() -> bool:
 
 async def _create_schema(engine: AsyncEngine) -> None:
     async with engine.begin() as connection:
-        await connection.execute(text(POSTGIS_EXTENSION))
+        await connection.execute(text("CREATE EXTENSION IF NOT EXISTS postgis"))
         await connection.run_sync(Base.metadata.create_all)
         await connection.execute(text(CREATE_BOUNDS_FUNCTION))
         await connection.execute(text(CREATE_BOUNDS_TRIGGER))
