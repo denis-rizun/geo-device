@@ -5,7 +5,7 @@ from sqlalchemy import CursorResult, cast, delete, func, insert, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import ConflictError, ForbiddenError, NotFoundError
+from app.core.exceptions import ConflictError, NotFoundError
 from app.core.utils import GEOGRAPHY_POINT, SRID
 from app.domains.geozones.models import Geozone
 from app.domains.geozones.schemas import GeozoneCreateRequest, GeozoneResponse, GeozoneUpdateRequest
@@ -60,10 +60,8 @@ class GeozoneService:
     async def retrieve(self, geozone_id: int, user_id: str) -> GeozoneResponse:
         stmt = select(*_READ_COLUMNS).where(Geozone.id == geozone_id)
         row = (await self._session.execute(stmt)).one_or_none()
-        if row is None:
+        if not row or row.user_id != user_id:
             raise NotFoundError(f"Geozone {geozone_id} not found")
-        if row.user_id != user_id:
-            raise ForbiddenError("You don't have an access to this geozone")  # todo: change to 404
 
         return GeozoneResponse.model_validate(row)
 
