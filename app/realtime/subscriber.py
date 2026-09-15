@@ -88,7 +88,7 @@ class Subscriber:
 
 
 def get_subscriber() -> Subscriber:
-    if _subscriber is None:
+    if not _subscriber:
         raise RuntimeError("Realtime subscriber is not initialised")
     return _subscriber
 
@@ -102,6 +102,6 @@ async def init_subscriber(redis: Redis) -> Subscriber:
 
 async def close_subscriber() -> None:
     global _subscriber
-    if _subscriber is not None:
+    if _subscriber:
         await _subscriber.stop()
         _subscriber = None

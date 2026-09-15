@@ -23,7 +23,7 @@ class Connection:
         self._sender = asyncio.create_task(self._send_queued(), name=f"ws-sender-{id(self)}")
 
     async def close(self) -> None:
-        if self._sender is None:
+        if not self._sender:
             return
 
         self._sender.cancel()

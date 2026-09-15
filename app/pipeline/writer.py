@@ -1,6 +1,4 @@
-from typing import Any, cast
-
-from sqlalchemy import CursorResult, insert
+from sqlalchemy import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.utils import SRID
@@ -22,8 +20,8 @@ async def write_pings(session: AsyncSession, pings: list[Ping]) -> int:
             for ping in pings
         ]
     )
-    result = cast("CursorResult[Any]", await session.execute(stmt))
-    return result.rowcount
+    await session.execute(stmt)
+    return len(pings)
 
 
 def _to_ewkt(ping: Ping) -> str:

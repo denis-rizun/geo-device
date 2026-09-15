@@ -1,4 +1,4 @@
-from typing import Annotated, Any
+from typing import Annotated
 
 from fastapi import APIRouter, Query, Response, status
 
@@ -6,18 +6,11 @@ from app.dependencies import CurrentUserDep
 from app.domains.geozones.dependencies import GeozoneDep, GeozoneServiceDep
 from app.domains.geozones.schemas import GeozoneCreateRequest, GeozoneResponse, GeozoneUpdateRequest
 
-_UNAUTHORIZED: dict[int | str, dict[str, Any]] = {
-    status.HTTP_401_UNAUTHORIZED: {"description": "X-User-ID header has unsupported format"}
-}
-_NAME_TAKEN: dict[int | str, dict[str, Any]] = {
-    status.HTTP_409_CONFLICT: {"description": "Geozone with this name already exists"}
-}
-_GEOZONE_ACCESS: dict[int | str, dict[str, Any]] = {
-    status.HTTP_403_FORBIDDEN: {"description": "You don't have an access to that"},
-    status.HTTP_404_NOT_FOUND: {"description": "Geozone not found"},
-}
-
-router = APIRouter(prefix="/geozones", tags=["Geozones"], responses=_UNAUTHORIZED)
+router = APIRouter(
+    prefix="/geozones",
+    tags=["Geozones"],
+    responses={status.HTTP_401_UNAUTHORIZED: {"description": "X-User-ID header has unsupported format"}},
+)
 
 
 @router.post(
@@ -25,7 +18,7 @@ router = APIRouter(prefix="/geozones", tags=["Geozones"], responses=_UNAUTHORIZE
     response_model=GeozoneResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Create a geozone",
-    responses=_NAME_TAKEN,
+    responses={status.HTTP_409_CONFLICT: {"description": "Geozone with this name already exists"}},
 )
 async def create_geozone(
     payload: GeozoneCreateRequest,
@@ -46,14 +39,14 @@ async def list_geozones(
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> list[GeozoneResponse]:
-    return await service.list(user_id=user_id, limit=limit, offset=offset)
+    return await service.list(user_id, limit=limit, offset=offset)
 
 
 @router.get(
     path="/{id}",
     response_model=GeozoneResponse,
     summary="Retrieve a geozone",
-    responses=_GEOZONE_ACCESS,
+    responses={status.HTTP_404_NOT_FOUND: {"description": "Geozone not found"}},
 )
 async def get_geozone(geozone: GeozoneDep) -> GeozoneResponse:
     return geozone
@@ -63,7 +56,10 @@ async def get_geozone(geozone: GeozoneDep) -> GeozoneResponse:
     path="/{id}",
     response_model=GeozoneResponse,
     summary="Update a geozone",
-    responses=_GEOZONE_ACCESS | _NAME_TAKEN,
+    responses={
+        status.HTTP_404_NOT_FOUND: {"description": "Geozone not found"},
+        status.HTTP_409_CONFLICT: {"description": "Geozone with this name already exists"},
+    },
 )
 async def update_geozone(
     geozone: GeozoneDep,
@@ -77,7 +73,7 @@ async def update_geozone(
     path="/{id}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete a geozone",
-    responses=_GEOZONE_ACCESS,
+    responses={status.HTTP_404_NOT_FOUND: {"description": "Geozone not found"}},
 )
 async def delete_geozone(geozone: GeozoneDep, service: GeozoneServiceDep) -> Response:
     await service.delete(geozone)

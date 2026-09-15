@@ -12,9 +12,9 @@ FRONTEND_DIR = BASE_DIR / "frontend"
 SRID = 4326
 GEOGRAPHY_POINT = Geography(geometry_type="POINT", srid=SRID, spatial_index=False)
 
+MAX_ID_LENGTH = 64
 Latitude = Annotated[float, Field(ge=-90.0, le=90.0)]
 Longitude = Annotated[float, Field(ge=-180.0, le=180.0)]
-MAX_ID_LENGTH = 64
 DeviceId = Annotated[str, Field(min_length=1, max_length=MAX_ID_LENGTH)]
 UserId = Annotated[str, Field(min_length=1, max_length=MAX_ID_LENGTH)]
 
